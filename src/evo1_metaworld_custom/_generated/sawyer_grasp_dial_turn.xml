@@ -1,0 +1,31 @@
+<mujoco>
+  <include file="/home/mark/miniconda3/envs/metaworld/lib/python3.10/site-packages/metaworld/assets/scene/basic_scene.xml"/>
+  <include file="/home/mark/miniconda3/envs/metaworld/lib/python3.10/site-packages/metaworld/assets/objects/assets/xyz_base_dependencies.xml"/>
+  <asset>
+    <material name="dial_metal" rgba=".35 .35 .35 1" shininess="1" reflectance=".4" specular=".3"/>
+    <material name="dial_red" rgba=".7 .1 .1 1" shininess="1" reflectance=".4" specular=".2"/>
+  </asset>
+  <default>
+    <default class="dial_base">
+      <joint armature="0.001" damping="2" limited="true"/>
+      <default class="dial_col">
+        <geom conaffinity="1" contype="1" condim="4" group="4" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+      </default>
+    </default>
+  </default>
+  <worldbody>
+    <include file="/home/mark/miniconda3/envs/metaworld/lib/python3.10/site-packages/metaworld/assets/objects/assets/xyz_base.xml"/>
+    <body name="dial" pos="0 0.7 0.0">
+      <include file="/home/mark/Project/01-RL/VLA/Evo-1/src/evo1_metaworld_custom/_generated/grasp_dial.xml"/>
+      <site name="dialStart" pos="0 -0.05 0.035" size="0.005" rgba="0 0 1 1"/>
+    </body>
+    <site name="goal" pos="0.0 0.74 0.07" size="0.02" rgba=".8 0 0 1"/>
+  </worldbody>
+  <actuator>
+    <position ctrllimited="true" ctrlrange="-1 1" joint="r_close" kp="400" user="1"/>
+    <position ctrllimited="true" ctrlrange="-1 1" joint="l_close" kp="400" user="1"/>
+  </actuator>
+  <equality>
+    <weld body1="mocap" body2="hand" solref="0.02 1"/>
+  </equality>
+</mujoco>

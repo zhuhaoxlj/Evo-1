@@ -72,6 +72,17 @@ TASK_POLICY_MAPPING: dict[str, Any] = {
 ACTION_DIM = 4
 OBS_DIM = 4
 
+try:
+    from evo1_metaworld_custom.grasp_dial_env import (
+        CUSTOM_TASK_DESCRIPTIONS,
+        CUSTOM_TASK_POLICY_MAPPING,
+        make_custom_env,
+    )
+except ImportError:
+    CUSTOM_TASK_DESCRIPTIONS: dict[str, str] = {}
+    CUSTOM_TASK_POLICY_MAPPING: dict[str, Any] = {}
+    make_custom_env = None
+
 
 class MetaworldEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 80}
@@ -99,9 +110,20 @@ class MetaworldEnv(gym.Env):
 
         self._env = self._make_envs_task(self.task)
         self._max_episode_steps = self._env.max_path_length
-        self.task_description = TASK_DESCRIPTIONS[self.task]
+        self._action_dim = int(np.prod(self._env.action_space.shape))
+        if hasattr(self._env, "get_proprio_state"):
+            self._obs_dim = int(np.asarray(self._env.get_proprio_state()).shape[0])
+        else:
+            self._obs_dim = OBS_DIM
+        self.task_description = TASK_DESCRIPTIONS.get(
+            self.task,
+            CUSTOM_TASK_DESCRIPTIONS.get(self.task, self.task.replace("-", " ")),
+        )
 
-        self.expert_policy = TASK_POLICY_MAPPING[self.task]()
+        policy_cls = TASK_POLICY_MAPPING.get(self.task) or CUSTOM_TASK_POLICY_MAPPING.get(
+            self.task
+        )
+        self.expert_policy = policy_cls() if policy_cls is not None else None
 
         if self.obs_type == "state":
             raise NotImplementedError()
@@ -128,13 +150,13 @@ class MetaworldEnv(gym.Env):
                     "agent_pos": spaces.Box(
                         low=-1000.0,
                         high=1000.0,
-                        shape=(OBS_DIM,),
+                        shape=(self._obs_dim,),
                         dtype=np.float64,
                     ),
                 }
             )
 
-        self.action_space = spaces.Box(low=-1, high=1, shape=(ACTION_DIM,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(self._action_dim,), dtype=np.float32)
 
     def render(self) -> np.ndarray:
         """
@@ -144,12 +166,23 @@ class MetaworldEnv(gym.Env):
             np.ndarray: The rendered RGB image from the environment.
         """
         image = self._env.render()
-        if self.camera_name == "corner2":
+        if self.camera_name == "corner2" and not getattr(self._env, "handles_corner2_flip", False):
             # Images from this camera are flipped — correct them
             image = np.flip(image, (0, 1))
         return image
 
     def _make_envs_task(self, env_name: str):
+        if make_custom_env is not None:
+            env = make_custom_env(
+                env_name,
+                render_mode="rgb_array",
+                camera_name=self.camera_name,
+                width=self.observation_width,
+                height=self.observation_height,
+            )
+            if env is not None:
+                return env
+
         mt1 = metaworld.MT1(env_name, seed=42)
         env = mt1.train_classes[env_name](render_mode="rgb_array", camera_name=self.camera_name)
         env.set_task(mt1.train_tasks[0])
@@ -167,10 +200,13 @@ class MetaworldEnv(gym.Env):
         image = None
         if self._env is not None:
             image = self._env.render()
-            if self.camera_name == "corner2":
+            if self.camera_name == "corner2" and not getattr(self._env, "handles_corner2_flip", False):
                 # NOTE: The "corner2" camera in MetaWorld environments outputs images with both axes inverted.
                 image = np.flip(image, (0, 1))
-        agent_pos = raw_obs[:4]
+        if hasattr(self._env, "get_proprio_state"):
+            agent_pos = np.asarray(self._env.get_proprio_state(), dtype=np.float64)
+        else:
+            agent_pos = raw_obs[:4]
         if self.obs_type == "state":
             raise NotImplementedError(
                 "'state' obs_type not implemented for MetaWorld. Use pixel modes instead."
