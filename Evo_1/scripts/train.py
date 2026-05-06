@@ -266,6 +266,22 @@ def save_checkpoint(save_dir, step, model_engine, loss, accelerator, config=None
 
 def load_checkpoint_with_deepspeed(model_engine, load_dir, accelerator, tag="step_best", load_optimizer_states=True, resume_pretrain=False):
 
+    if not hasattr(model_engine, "load_checkpoint"):
+        checkpoint_dir = os.path.join(load_dir, tag)
+        checkpoint_path = os.path.join(checkpoint_dir, "pytorch_model.bin")
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"PyTorch checkpoint not found: {checkpoint_path}")
+        unwrapped_model = accelerator.unwrap_model(model_engine)
+        state_dict = torch.load(checkpoint_path, map_location=accelerator.device)
+        unwrapped_model.load_state_dict(state_dict, strict=True)
+        try:
+            loaded_step = int(tag.split("_")[-1])
+        except ValueError:
+            loaded_step = 0
+        if accelerator.is_main_process:
+            logging.info(f"Loaded PyTorch checkpoint from {checkpoint_path}")
+        return loaded_step, {"step": loaded_step}
+
     try:
         load_path, client_state = model_engine.load_checkpoint(
             load_dir,
