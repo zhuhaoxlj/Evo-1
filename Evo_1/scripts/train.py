@@ -229,7 +229,19 @@ def save_checkpoint(save_dir, step, model_engine, loss, accelerator, config=None
         "config": config,
     } if accelerator.is_main_process else {} 
 
-    model_engine.save_checkpoint(save_dir, tag=tag, client_state=client_state)
+    if hasattr(model_engine, "save_checkpoint"):
+        model_engine.save_checkpoint(save_dir, tag=tag, client_state=client_state)
+        checkpoint_type = "ds_model"
+        checkpoint_file = "mp_rank_00_model_states.pt"
+    elif accelerator.is_main_process:
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        unwrapped_model = accelerator.unwrap_model(model_engine)
+        torch.save(unwrapped_model.state_dict(), os.path.join(checkpoint_dir, "pytorch_model.bin"))
+        checkpoint_type = "torch_model"
+        checkpoint_file = "pytorch_model.bin"
+    else:
+        checkpoint_type = "torch_model"
+        checkpoint_file = "pytorch_model.bin"
     
     if accelerator.is_main_process:
         if config is not None:
@@ -244,9 +256,9 @@ def save_checkpoint(save_dir, step, model_engine, loss, accelerator, config=None
                 
         checkpoint_meta_path = os.path.join(checkpoint_dir, "checkpoint.json")
         checkpoint_meta = {
-            "type": "ds_model",
+            "type": checkpoint_type,
             "version": 0.0,
-            "checkpoints": "mp_rank_00_model_states.pt"
+            "checkpoints": checkpoint_file
         }
         with open(checkpoint_meta_path, "w") as f:
             json.dump(checkpoint_meta, f, indent=2)
